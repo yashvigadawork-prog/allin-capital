@@ -14,6 +14,9 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// Reading, researching and scoring take minutes. 300 s is the longest Vercel allows on the free plan.
+export const maxDuration = 300;
+
 export const metadata: Metadata = {
   title: "All In Capital screener",
   description: "Reads and scores inbound applications for the associate",
