@@ -1,0 +1,42 @@
+{
+  "name": "allin-screener",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "db:setup": "node scripts/setup-db.mjs",
+    "test": "tsx --test lib/*.test.ts",
+    "model:check": "tsx --env-file=.env.local scripts/model-check.mts",
+    "import": "tsx --env-file=.env.local scripts/import-data.mts",
+    "volume-test": "tsx --env-file=.env.local scripts/volume-test.mts",
+    "search:check": "tsx --env-file=.env.local scripts/search-check.mts",
+    "evals": "tsx --env-file=.env.local scripts/evals.mts",
+    "delete-founder": "tsx --env-file=.env.local scripts/delete-founder.mts"
+  },
+  "dependencies": {
+    "@google/genai": "^3.6.1",
+    "@neondatabase/serverless": "^1.2.1",
+    "@types/nodemailer": "^8.0.2",
+    "dotenv": "^18.0.10",
+    "next": "16.4.6",
+    "nodemailer": "^10.6.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "unpdf": "^2.2.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.17",
+    "@tailwindcss/turbopack": "4.3.3",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.6",
+    "tailwindcss": "4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5"
+  }
+}
