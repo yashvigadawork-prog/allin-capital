@@ -8,7 +8,7 @@ Reads an inbound application (deck and form), researches the founders, and score
 ## The five production questions
 
 **1. Is it reliable?**
-- The same application scored twice gives identical scores; the same applications in a different order rank the same (evals 1, 2, 5; all 20 evals pass, `npm run evals`).
+- Scoring the same application again with nothing changed reuses the stored scores instead of asking the model, so the answer is identical. This is needed because the real model is not repeatable on borderline criteria: in a live test the same application scored a criterion as 3, 3, 3, 2 over four runs, and once as a gap and once as 2. Scores change only when something they depend on changes (the application text, research, corrections, criteria, the cap or the prompt). A fresh, independent second opinion is therefore not available from "Score again". The same applications in a different order rank the same (evals 1, 2, 5; all 20 evals pass, `npm run evals`; the live run of cases 1 and 7 passes).
 - A score without a source quote is rejected by code (eval 4). A missing founder background becomes a gap, never an invented score (eval 3).
 - A model call that fails to connect, or that Google answers with "busy" or "rate limit", is retried 3 times, 1, 2 and 4 seconds apart, then stops with a plain message. A queue step that fails is tried once more, then stops with its reason.
 - 86 automated tests pass. Not checked: a real Google outage (only fake failures were tested).

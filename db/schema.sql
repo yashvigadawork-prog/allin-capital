@@ -157,6 +157,7 @@ create unique index if not exists scores_application_criterion_key on scores (ap
 alter table applications add column if not exists scored_at timestamptz;
 alter table applications add column if not exists score_note text;
 alter table applications add column if not exists scored_with_research boolean;
+alter table applications add column if not exists score_input_hash text;
 create table if not exists portfolio_companies (
   id serial primary key,
   name text not null,

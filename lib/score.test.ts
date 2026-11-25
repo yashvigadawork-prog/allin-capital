@@ -189,6 +189,7 @@ test("scoring again replaces the rows in place, so corrections can keep pointing
   const id = await addExtracted(pg);
   await scoreApplication(id, { client: fakeModel().client, sql });
   const before = (await pg.query("select id from scores order by id")).rows.map((x) => (x as { id: number }).id);
+  await pg.query("update applications set deck_text = coalesce(deck_text, '') || ' (changed)'"); // identical input would reuse the stored scores
   await scoreApplication(id, { client: fakeModel({ score: () => goodScores({ "Founder-market fit": { score: 5 } }) }).client, sql });
   const after = (await pg.query("select s.id, s.score from scores s join criteria c on c.id = s.criterion_id order by s.id")).rows as { id: number; score: number }[];
   assert.deepEqual(after.map((x) => x.id), before);
@@ -199,6 +200,7 @@ test("bad JSON is asked twice and fails without touching earlier scores; unread 
   const { pg, sql } = await freshDb();
   const id = await addExtracted(pg);
   await scoreApplication(id, { client: fakeModel().client, sql });
+  await pg.query("update applications set deck_text = coalesce(deck_text, '') || ' (changed)'"); // identical input would reuse the stored scores
   const bad = fakeModel({ score: () => "garbage" });
   const r = await scoreApplication(id, { client: bad.client, sql });
   assert.equal(r.ok, false);

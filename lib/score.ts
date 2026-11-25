@@ -4,6 +4,7 @@
 import type { GoogleGenAI } from "@google/genai";
 import { db } from "./db";
 import { isEmpty } from "./extract";
+import { createHash } from "node:crypto";
 import { callModel } from "./model";
 import { checkPortfolio } from "./portfolio";
 import { redact } from "./redact";
@@ -175,6 +176,7 @@ type Loaded = {
   company_name: string;
   deck_text: string | null;
   form_text: string | null;
+  score_input_hash: string | null;
   researched_at: string | null;
   fields: Record<string, unknown> | null;
   conflicts: Conflict[] | null;
@@ -184,10 +186,12 @@ type TextIn = {
   id: number | null; // null for a backtest, which has no application row
   company: string; deck: string; form: string; fields: Record<string, unknown>; deckForm: Conflict[];
   findings: WebFinding[]; examples: Example[]; criteria: Criterion[]; cap: number;
+  /** Hash of the last scoring run for this application. If nothing the score depends on has changed, the model is not asked again. */
+  lastHash?: string | null;
 };
 
 /** One model call that scores every criterion for the given text, then the code checks every score. Shared by real applications and the backtest. */
-export async function scoreText(t: TextIn, deps: Deps = {}): Promise<{ rows: ScoreRow[] } | { error: string }> {
+export async function scoreText(t: TextIn, deps: Deps = {}): Promise<{ rows: ScoreRow[]; hash: string } | { reused: true; hash: string } | { error: string }> {
   const deck = redact(t.deck);
   const form = redact(t.form);
   const input = redact(
@@ -200,6 +204,9 @@ export async function scoreText(t: TextIn, deps: Deps = {}): Promise<{ rows: Sco
       `<criteria>\n${t.criteria.map((c) => `- ${c.name}: ${c.definition}`).join("\n")}\n</criteria>`,
   );
   const material: Material = { pages: pagesOf(deck, form), findings: t.findings };
+  // The model gives slightly different answers to the same question on borderline criteria, so identical inputs reuse the stored scores.
+  const hash = createHash("sha256").update(`${PROMPT_VERSION}\n${SYSTEM}\ncap ${t.cap}\n${input}`).digest("hex");
+  if (t.lastHash === hash) return { reused: true, hash };
 
   let raws: Raw[] | undefined;
   let lastError = "";
@@ -222,6 +229,7 @@ export async function scoreText(t: TextIn, deps: Deps = {}): Promise<{ rows: Sco
   }
   if (!raws) return { error: `${lastError} It was asked twice.` };
   return {
+    hash,
     rows: t.criteria.map((c) =>
       finalise(c, raws!.find((r) => norm(r.criterion) === norm(c.name)), { fields: t.fields, material, cap: t.cap, deckForm: t.deckForm }),
     ),
@@ -236,7 +244,7 @@ export async function scoreApplication(id: number, deps: Deps = {}): Promise<{ o
     return { ok: false, scored: 0, gaps: 0, capped: 0, error: msg };
   };
 
-  const [app] = (await sql`select a.company_name, a.deck_text, a.form_responses->>'text' as form_text, a.researched_at, e.fields, e.conflicts
+  const [app] = (await sql`select a.company_name, a.deck_text, a.form_responses->>'text' as form_text, a.researched_at, a.score_input_hash, e.fields, e.conflicts
     from applications a left join extracted_fields e on e.application_id = a.id where a.id = ${id}`) as Loaded[];
   if (!app) return { ok: false, scored: 0, gaps: 0, capped: 0, error: `Application ${id} was not found.` };
   if (!app.fields) return fail("Read the application first, then score it.");
@@ -248,10 +256,16 @@ export async function scoreApplication(id: number, deps: Deps = {}): Promise<{ o
 
   const examples = (await learningStatus(sql)).on ? await similarCorrections(sql, id, app.fields) : [];
   const scored = await scoreText(
-    { id, company: app.company_name, deck: app.deck_text ?? "", form: app.form_text ?? "", fields: app.fields, deckForm: app.conflicts ?? [], findings, examples, criteria, cap },
+    { id, company: app.company_name, deck: app.deck_text ?? "", form: app.form_text ?? "", fields: app.fields, deckForm: app.conflicts ?? [], findings, examples, criteria, cap,
+      lastHash: (await sql`select count(*)::int as n from scores where application_id = ${id}`)[0].n === criteria.length ? app.score_input_hash : null },
     deps,
   );
   if ("error" in scored) return fail(scored.error);
+  if ("reused" in scored) {
+    const [c] = (await sql`select (count(*) filter (where score is null))::int as gaps, (count(*) filter (where capped is not null))::int as capped from scores where application_id = ${id}`) as { gaps: number; capped: number }[];
+    await sql`insert into decision_log (application_id, step, decision, reason) values (${id}, 'scoring', 'reused stored scores', 'Nothing the scores depend on has changed since the last run, so the model was not asked again.')`;
+    return { ok: true, scored: criteria.length - c.gaps, gaps: c.gaps, capped: c.capped };
+  }
   const rows = scored.rows;
   for (const r of rows)
     await sql`insert into scores (application_id, criterion_id, score, model_score, source, evidence, reasoning, gaps, capped, conflict, basis, prompt_version, example_ids)
@@ -265,7 +279,7 @@ export async function scoreApplication(id: number, deps: Deps = {}): Promise<{ o
     where c.score_id = s.id and s.application_id = ${id}`;
 
   const portfolio = await checkPortfolio(id, deps); // a failure here never undoes the scores
-  await sql`update applications set status = 'scored', scored_at = now(), scored_with_research = ${!!app.researched_at},
+  await sql`update applications set status = 'scored', scored_at = now(), scored_with_research = ${!!app.researched_at}, score_input_hash = ${scored.hash},
     score_note = ${portfolio.error ?? null} where id = ${id}`;
   const gaps = rows.filter((r) => r.score === null).length;
   const capped = rows.filter((r) => r.capped).length;

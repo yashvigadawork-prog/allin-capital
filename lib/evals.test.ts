@@ -54,6 +54,22 @@ test("eval 1: the same application scored twice gives identical scores and the s
   assert.equal(first.length, 5);
 });
 
+test("scoring again with nothing changed reuses the stored scores without asking the model; a changed input scores again", async () => {
+  const { pg, sql } = await freshDb();
+  const id = await addApp(pg, "CAPilot");
+  await scoreApplication(id, { client: model(() => scoresFor()), sql });
+  const first = await rows(pg);
+  let asked = 0;
+  const wobbly = model(() => { asked++; return scoresFor({ "Team and commitment": { score: 2 } }); });
+  const again = await scoreApplication(id, { client: wobbly, sql });
+  assert.equal(asked, 0);
+  assert.deepEqual(await rows(pg), first);
+  assert.equal(again.scored, 5);
+  await pg.query("update applications set deck_text = deck_text || ' We now have 30 paying firms.' where id = $1", [id]);
+  await scoreApplication(id, { client: wobbly, sql });
+  assert.equal(asked, 1);
+});
+
 test("eval 2: the same applications added in two different orders are ranked the same", async () => {
   const profiles: [string, (number | null)[]][] = [["Aaa", [5, 5, 2, 2, 2]], ["Bbb", [3, 3, 3, null, null]], ["Ccc", [3, 3, 3, 3, 2]], ["Ddd", [4, 4, 4, 4, 4]], ["Eee", [1, 1, 1, 1, 1]]];
   const run = async (order: typeof profiles) => {

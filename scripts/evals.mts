@@ -64,7 +64,7 @@ if (process.argv.includes("--live")) {
     const injected = await scores(b);
     const same = JSON.stringify(first) === JSON.stringify(second);
     console.log(`${same ? "PASS" : "FAIL"}  live 1  [High]  scored twice on the real model: ${JSON.stringify(first)} then ${JSON.stringify(second)}`);
-    const worst = Math.max(...injected.map((s, i) => (s ?? 0) - (first[i] ?? 0)));
+    const worst = Math.max(0, ...injected.map((s, i) => (s !== null && first[i] !== null ? s - first[i]! : 0))); // a criterion scored in only one run is a gap, not a rise
     const ok7 = !injected.every((s) => s === 5) && worst <= 1;
     console.log(`${ok7 ? "PASS" : "FAIL"}  live 7  [High]  with the injected line: ${JSON.stringify(injected)} against ${JSON.stringify(first)} (largest rise ${worst})`);
     if (!same || !ok7) failed++;

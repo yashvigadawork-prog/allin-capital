@@ -118,9 +118,9 @@ export async function runBacktest(deps: Deps = {}, concurrency = 3, mode: Mode =
           { id: null, company: "Company A", deck, form: "", fields: { sector: d.sector, product: d.original_application }, deckForm: [], findings: [], examples: [], criteria, cap: 0 },
           { ...deps, sql },
         );
-        if ("error" in out) {
+        if ("error" in out || "reused" in out) { // a backtest passes no lastHash, so it is never "reused"
           failed++;
-          await sql`insert into backtest_results (run_id, past_deal_id, decision, error, prompt_version, mode) values (${run}, ${d.id}, ${d.decision}, ${out.error}, 'score', ${mode})`;
+          await sql`insert into backtest_results (run_id, past_deal_id, decision, error, prompt_version, mode) values (${run}, ${d.id}, ${d.decision}, ${"error" in out ? out.error : "Unexpected reuse."}, 'score', ${mode})`;
           continue;
         }
         const rec = recommend(out.rows);
